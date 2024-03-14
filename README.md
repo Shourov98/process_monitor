@@ -1,1 +1,1 @@
-# MW Trainee Trial Camp CLI project
+# MW Trainee Trial Camp RUST CLI project
