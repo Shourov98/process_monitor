@@ -8,8 +8,20 @@ use serde_json;
 // Struct representing a single monitor
 #[derive(Debug, Deserialize, Serialize)]
 struct Monitor {
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "monitor_id")]
+    monitor_id: Option<i32>,
     name: String,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     script: Option<String>,
+    #[serde(default)]
+    #[serde(rename = "type")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    monitor_type: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     result: Option<Result>,
     code: String,
 }
