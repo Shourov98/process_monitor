@@ -4,6 +4,9 @@ use std::fs::File;
 use std::io::BufReader;
 use std::fs::write;
 use serde_json;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use std::thread;
 
 // Struct representing a single monitor
 #[derive(Debug, Deserialize, Serialize)]
@@ -39,6 +42,75 @@ struct MonitorData {
     monitors: Vec<Monitor>,
 }
 
+fn process_monitors(monitor_data: Arc<Mutex<MonitorData>>, output_file: String) {
+    let end_time = chrono::Utc::now() + chrono::Duration::try_minutes(5).unwrap();
+    let output_file_cloned = output_file.clone();
+    
+    // Clone monitor_data before moving into the closure
+    let monitor_data_clone = monitor_data.clone();
+    
+    // Run the update_monitors() and store_monitors() in parallel
+    let update_handle = thread::spawn(move || update_monitors(monitor_data_clone, end_time));
+    let store_handle = thread::spawn(move || store_monitors(monitor_data, end_time, output_file_cloned));
+
+    // Wait for the threads to finish
+    update_handle.join().unwrap();
+    store_handle.join().unwrap();
+}
+
+
+fn update_monitors(monitor_data: Arc<Mutex<MonitorData>>, end_time: chrono::DateTime<chrono::Utc>) {
+    while chrono::Utc::now() < end_time {
+        // Lock the mutex to access monitor_data
+        let mut data = monitor_data.lock().unwrap();
+        
+        // Process and update monitor data
+        for monitor in &mut data.monitors {
+            let random_value = rand::random::<i32>();
+            let current_timestamp = chrono::Utc::now().timestamp();
+            let result = Result {
+                value: random_value,
+                processed_at: current_timestamp,
+            };
+            monitor.result = Some(result);
+        }
+    }
+}
+
+fn store_monitors(monitor_data: Arc<Mutex<MonitorData>>, end_time: chrono::DateTime<chrono::Utc>, _output_file: String) {
+    let mut current_time = chrono::Utc::now();
+    while current_time < end_time {
+        // Lock the mutex to access monitor_data
+        let mut data = monitor_data.lock().unwrap();
+
+        // Process and update monitor data
+        for monitor in &mut data.monitors {
+            let random_value = rand::random::<i32>();
+            let current_timestamp = chrono::Utc::now().timestamp();
+            let result = Result {
+                value: random_value,
+                processed_at: current_timestamp,
+            };
+            monitor.result = Some(result);
+        }
+        
+        // Convert MonitorData to JSON
+        let json_data = serde_json::to_string_pretty(&*data).expect("Failed to convert to JSON");
+
+        // Generate filename based on current time
+        let filename = format!("{}_monitors.json", current_time.timestamp());
+
+        // Write JSON data to file
+        write(&filename, json_data).expect("Failed to write to output file");
+
+        // Wait for 1 minute before storing again
+        thread::sleep(Duration::from_secs(60));
+        current_time = chrono::Utc::now();
+    }
+}
+
+
+
 fn main() {
     // Define command-line arguments
     let matches = App::new("process_monitor")
@@ -66,32 +138,12 @@ fn main() {
     let reader = BufReader::new(file);
 
     // Parse JSON data
-    let mut monitor_data: MonitorData = serde_json::from_reader(reader).expect("Error parsing JSON data");
-
-    // Process and print monitor data
-    for monitor in &mut monitor_data.monitors {
-        // Generate random value
-        let random_value = rand::random::<i32>();
-
-        // Get current timestamp in seconds since Unix epoch
-        let current_timestamp = chrono::Utc::now().timestamp();
-
-        // Create Result instance with random value and current timestamp
-        let result = Result {
-            value: random_value,
-            processed_at: current_timestamp,
-        };
-
-        // Update the result field of the monitor
-        monitor.result = Some(result);
-    }
+    let monitor_data: MonitorData = serde_json::from_reader(reader).expect("Error parsing JSON data");
+    let arc_monitor_data = Arc::new(Mutex::new(monitor_data));
 
     // Extract the value of the "outputFile" argument
-    let output_file = matches.value_of("outputFile").unwrap();
+    let output_file = matches.value_of("outputFile").unwrap().to_string();
 
-    // Convert MonitorData back to JSON
-    let json_data = serde_json::to_string_pretty(&monitor_data).expect("Failed to convert to JSON");
-
-    // Write the JSON data to the output file
-    write(output_file, json_data).expect("Failed to write to output file");
+    // Process and update monitors
+    process_monitors(arc_monitor_data, output_file);
 }
